@@ -1,82 +1,60 @@
-# چالش‌های رایج در تست کردن اسپرینگ بوت
+# Common Challenges in Testing Spring Boot
 
-تست‌نویسی توی اسپرینگ بوت، مخصوصاً برای تازه‌کارها، می‌تونه یه کم گیج‌کننده باشه. اگه ندونیم تزریق وابستگی (Dependency Injection) توی اسپرینگ چجوری کار می‌کنه یا پیکربندی خودکار (Auto-Configuration) اسپرینگ بوت دقیقاً چیه، احتمالاً شروع می‌کنیم به ریختن یه عالمه annotation روی تست‌هامون، به امید اینکه یه جوری کار کنه!
+Writing tests in Spring Boot can be a bit confusing, especially for beginners. If you're not familiar with dependency injection (DI) in Spring or how Spring Boot's auto-configuration works, you might end up adding a bunch of annotations to your tests, hoping that they somehow work!
 
-این روش آزمون و خطا شاید توی بعضی موارد جواب بده، ولی معمولاً نتیجه‌ش یه تست ناقص و غیربهینه می‌شه. اینجا باهم چند مورد از رایج‌ترین این اشتباهات رو بررسی می‌کنیم.
+This trial-and-error approach might work occasionally, but it usually leads to incomplete or inefficient tests. Let's go through some of the most common mistakes and how to avoid them.
 
-## اشتباه شماره ۱: `@Mock` در مقابل `@MockBean`
+## Mistake #1: @Mock vs. @MockBean
+One of the most common mistakes in Spring Boot testing is mocking dependencies—the objects that our class under test depends on.
 
-یکی از رایج‌ترین اشتباهات توی تست‌های اسپرینگ بوت، موک کردن وابستگی‌هاست، یعنی اشیایی که کلاس موردنظر ما بهشون وابسته‌ست.
+If you've used Mockito before, you probably know that for unit tests, we use `@Mock` to create a mock object. Now, when writing Spring Boot tests, you don’t have to forget what you know about Mockito.
 
-اگه قبلاً با Mockito کار کرده باشی، احتمالاً می‌دونی که برای تست‌های واحد (unit tests) می‌تونیم از `@Mock` استفاده کنیم تا یه mock object بسازیم. حالا وقتی داریم تست‌های اسپرینگ بوت رو می‌نویسیم، لازم نیست چیزی رو که از Mockito بلدی، فراموش کنی.
+### When Should You Use `@Mock` and When `@MockBean`?
+The key question here is: does your test run inside a Spring TestContext, or can it work independently of Spring?
 
-### پس کِی از `@Mock` استفاده کنیم و کِی از `@MockBean`؟
+- `@Mock` is for **unit tests** that run independently of Spring. In these tests, we mock dependencies and inject them into the class under test via constructor injection.
+- `@MockBean` is for tests that run within Spring’s TestContext, like when using `@SpringBootTest` or other slice tests. Here, Spring collects all beans and handles dependency injection for us.
 
-همین که بدونیم تستمون با یا بدون Spring TestContext اجرا می‌شه، می‌تونه تعیین کنه که از `@Mock` استفاده کنیم یا `@MockBean`.
+**Important Note:**
+From a Mockito stubbing perspective, `@Mock` and `@MockBean` work the same way. The real problem arises when we use both in the same test or mistakenly use one instead of the other.
 
-- `@Mock` فقط برای تست‌های واحد (Unit Tests) که مستقل از اسپرینگ اجرا می‌شن، مناسبه. توی این تست‌ها، معمولاً وابستگی‌ها (Collaborators) رو موک می‌کنیم و از طریق سازنده‌ی عمومی (public constructor) به کلاس مورد تست تزریق می‌کنیم.
-- ولی توی تست‌هایی که با `Spring TestContext` اجرا می‌شن، مثل وقتی که از `@SpringBootTest` یا یکی از `Slice Test`‌های اسپرینگ بوت استفاده می‌کنیم، باید از `@MockBean` استفاده کنیم تا اسپرینگ بفهمه که این Bean باید موقع تست، به‌جای نسخه‌ی اصلی، یه نسخه‌ی Mock شده باشه.
+## Mistake #2: Overusing `@SpringBootTest`
+When you start writing Spring Boot tests, you'll quickly come across `@SpringBootTest`. Even when you generate a new project from [start.spring.io](https://start.spring.io/), it includes a test with this annotation by default.
 
-> **نکته‌ی مهم!**
-> از نظر Stubbing توی Mockito، هم `@Mock` و هم `@MockBean` دقیقاً یه جور کار می‌کنن. مشکل اصلی زمانی پیش میاد که توی یه تست، هر دو رو باهم استفاده کنیم یا اشتباهی از یکی به‌جای اون یکی استفاده کنیم.
+### The Big Mistake:
+Many developers assume that `@SpringBootTest` is always necessary, but that's not true!
 
----
+`@SpringBootTest` loads the entire Spring context and should only be used for **integration tests**. If your service depends on an external system like a database, message queue, or API, you’ll need to provide those dependencies for your test.
 
-## اشتباه رایج دوم: استفاده‌ی بیش‌ازحد از `@SpringBootTest`
+### The Problem:
+If you use `@SpringBootTest` for every test, your tests will slow down **a lot** because Spring has to load the whole application every time!
 
-وقتی شروع به تست‌نویسی توی اسپرینگ بوت می‌کنیم، خیلی زود با `@SpringBootTest` روبه‌رو می‌شیم. حتی وقتی یه پروژه‌ی جدید از [start.spring.io](https://start.spring.io/) بسازیم، خودش یه تست اولیه با همین annotation ایجاد می‌کنه.
+### The Solution:
+Follow this general rule: run tests at the lowest possible level.
 
-### اما یه اشتباه بزرگ اینجاست!
+- **Unit Tests**: If you’re just testing an `if` statement in a `@Service` class, you **don’t need Spring Boot** at all! A simple JUnit + Mockito test is enough.
+- **Slice Tests**: If you need to test Spring Security config, use `@WebMvcTest`—it only loads the web layer, not the whole application.
+- **Integration Tests**: Use `@SpringBootTest` only when testing interactions between multiple components or end-to-end scenarios.
 
-خیلیا فکر می‌کنن که `@SpringBootTest` لازمه و باید توی همه‌ی تست‌ها استفاده بشه، ولی این درست نیست!
+## Mistake #3: Not Using Spring TestContext Cache
+This mistake is related to overusing `@SpringBootTest`. One of the reasons tests slow down is that Spring TestContext is being loaded from scratch for every test. But why create a new TestContext when we can reuse an existing one?
 
-### پس راه‌حل چیه؟
+### How Does Spring TestContext Caching Work?
+Whenever a test runs and a TestContext is needed (whether for a slice test or the whole ApplicationContext), Spring checks if there is already a cached TestContext with the same configuration.
 
-به‌عنوان یه قانون کلی، بهتره تا جایی که ممکنه، تست‌هامون رو توی سطح‌های پایین‌تر انجام بدیم.
+- If a matching TestContext exists, it **reuses** it.
+- If the new test requires a different configuration, a new TestContext is created and cached for future tests.
 
-**تست‌های واحد (Unit Tests):**
-    - اگه قراره فقط یه `if` توی یه کلاس `@Service` رو تست کنیم، نیازی به لود کردن کل اسپرینگ بوت نداریم! یه تست واحد ساده با `JUnit` و `Mockito` کاملاً کافیه.
+### How to Optimize TestContext Caching?
+Let’s say we have two tests:
 
-**تست‌های سطح میانی (Slice Tests):**
-    - مثلاً اگه بخوایم پیکربندی `Spring Security` رو تست کنیم، `@WebMvcTest` گزینه‌ی بهتریه، چون فقط لایه‌ی وب رو تست می‌کنه و نیازی به بالا آوردن کل اپلیکیشن نیست.
+1. A test that enables the `"integration-test"` profile.
+2. Another test that enables the `"web-test"` profile.
 
-**تست‌های یکپارچه (Integration Tests):**
-    - `@SpringBootTest` فقط وقتی لازمه که بخوایم ارتباط بین چندین کامپوننت مختلف رو تست کنیم یا تست End-to-End انجام بدیم.
+Since their configurations are different, Spring **cannot** reuse the same TestContext and has to create a new one each time, slowing down test execution.
 
----
+### Best Practices for Faster Tests:
+- Keep a **common configuration** for integration tests whenever possible.
+- Avoid creating multiple different configurations for tests that require a full ApplicationContext.
 
-## اشتباه رایج سوم: استفاده نکردن از کش (Cache) در `Spring TestContext`
-
-این اشتباه به مورد قبلی، یعنی استفاده‌ی بیش‌ازحد از `@SpringBootTest`، مرتبط است. یکی از مشکلاتی که باعث کند شدن تست‌ها می‌شود، لود کردن `Spring TestContext` از ابتدا برای هر تست است.
-
-### Spring TestContext چگونه کش می‌شود؟
-
-زمانی که یک تست اجرا می‌شود و قرار است `Spring TestContext` راه‌اندازی شود (چه یک `Slice Test` باشد، چه کل `Application Context`)، اسپرینگ بررسی می‌کند که آیا یک `TestContext` مشابه از قبل وجود دارد یا خیر.
-
-- اگر یک `TestContext` با همان پیکربندی قبلی کش شده باشد، همان را مجدداً استفاده می‌کند.
-- اگر تست جدید نیاز به یک پیکربندی متفاوت داشته باشد، یک `TestContext` جدید ساخته می‌شود و پس از اجرا، کش می‌شود تا تست‌های بعدی از آن استفاده کنند.
-
-### چگونه از این قابلیت بیشترین بهره را ببریم؟
-
-فرض کنید دو تست داریم:
-- یک تست که `Profile` به نام "integration-test" را فعال می‌کند.
-- یک تست دیگر که `Profile` به نام "web-test" را فعال می‌کند.
-
-چون پیکربندی این دو تست متفاوت است، Spring نمی‌تواند از یک `TestContext` مشترک برای آنها استفاده کند و مجبور می‌شود هر بار یک `TestContext` جدید بسازد که این باعث افزایش زمان اجرای تست‌ها می‌شود.
-
-### روش‌های بهینه‌سازی برای افزایش سرعت تست‌ها
-
-**از یک پیکربندی مشترک برای تست‌های یکپارچه استفاده کنیم.**
-**از تعریف چندین پیکربندی متفاوت برای تست‌هایی که کل `ApplicationContext` را نیاز دارند، خودداری کنیم.**
-
----
-
-## جمع‌بندی
-
-در این مطلب، سه اشتباه رایج در تست‌نویسی با اسپرینگ بوت رو بررسی کردیم:
-
-**عدم تشخیص تفاوت `@Mock` و `@MockBean`** و استفاده‌ی اشتباه از این دو.
-**استفاده‌ی بی‌رویه از `@SpringBootTest`** که باعث کند شدن تست‌ها می‌شود.
-**عدم استفاده از کش `Spring TestContext`** که باعث بارگذاری غیرضروری `TestContext` در تست‌ها می‌شود.
-
-با رعایت این نکات، می‌تونیم تست‌های بهینه‌تر و سریع‌تری برای برنامه‌های اسپرینگ بوت بنویسیم. 
+By following these guidelines, you can significantly improve test execution speed and maintainability in your Spring Boot applications.
